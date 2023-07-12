@@ -10,7 +10,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from .bert import BertConfig, BertLMHeadModel, BertModel
+from .bert import BertConfig, BertModel
 from .swin_transformer import SwinTransformer
 
 from transformers import BertTokenizer

@@ -53,8 +53,7 @@ class BertEmbeddings(nn.Module):
         self.config = config
 
     def forward(
-        self, input_ids=None, position_ids=None, inputs_embeds=None, past_key_values_length=0
-    ):
+        self, input_ids=None, position_ids=None, inputs_embeds=None):
         if input_ids is not None:
             input_shape = input_ids.size()
         else:
@@ -63,7 +62,7 @@ class BertEmbeddings(nn.Module):
         seq_length = input_shape[1]
 
         if position_ids is None:
-            position_ids = self.position_ids[:, past_key_values_length : seq_length + past_key_values_length]
+            position_ids = self.position_ids[:, 0 : seq_length]
 
         if inputs_embeds is None:
             inputs_embeds = self.word_embeddings(input_ids)
@@ -122,7 +121,6 @@ class BertSelfAttention(nn.Module):
         key_layer = self.transpose_for_scores(self.key(encoder_hidden_states))
         value_layer = self.transpose_for_scores(self.value(encoder_hidden_states))
         attention_mask = encoder_attention_mask
-
         query_layer = self.transpose_for_scores(mixed_query_layer)
 
         past_key_value = (key_layer, value_layer)
@@ -234,9 +232,8 @@ class BertLayer(nn.Module):
         self.chunk_size_feed_forward = config.chunk_size_feed_forward
         self.seq_len_dim = 1
         self.attention = BertAttention(config)      
-        self.layer_num = layer_num          
-        if self.config.add_cross_attention:
-            self.crossattention = BertAttention(config, is_cross_attention=self.config.add_cross_attention)
+        self.layer_num = layer_num
+        self.crossattention = BertAttention(config, is_cross_attention=True)
         self.intermediate = BertIntermediate(config)
         self.output = BertOutput(config)
 
@@ -306,66 +303,66 @@ class BertEncoder(nn.Module):
         return tuple([hidden_states, next_decoder_cache])
 
 
-class BertPooler(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-        self.activation = nn.Tanh()
+# class BertPooler(nn.Module):
+#     def __init__(self, config):
+#         super().__init__()
+#         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+#         self.activation = nn.Tanh()
 
-    def forward(self, hidden_states):
-        # We "pool" the model by simply taking the hidden state corresponding
-        # to the first token.
-        first_token_tensor = hidden_states[:, 0]
-        pooled_output = self.dense(first_token_tensor)
-        pooled_output = self.activation(pooled_output)
-        return pooled_output
-
-
-class BertPredictionHeadTransform(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-        if isinstance(config.hidden_act, str):
-            self.transform_act_fn = ACT2FN[config.hidden_act]
-        else:
-            self.transform_act_fn = config.hidden_act
-        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-
-    def forward(self, hidden_states):
-        hidden_states = self.dense(hidden_states)
-        hidden_states = self.transform_act_fn(hidden_states)
-        hidden_states = self.LayerNorm(hidden_states)
-        return hidden_states
+#     def forward(self, hidden_states):
+#         # We "pool" the model by simply taking the hidden state corresponding
+#         # to the first token.
+#         first_token_tensor = hidden_states[:, 0]
+#         pooled_output = self.dense(first_token_tensor)
+#         pooled_output = self.activation(pooled_output)
+#         return pooled_output
 
 
-class BertLMPredictionHead(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.transform = BertPredictionHeadTransform(config)
+# class BertPredictionHeadTransform(nn.Module):
+#     def __init__(self, config):
+#         super().__init__()
+#         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+#         if isinstance(config.hidden_act, str):
+#             self.transform_act_fn = ACT2FN[config.hidden_act]
+#         else:
+#             self.transform_act_fn = config.hidden_act
+#         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
-        # The output weights are the same as the input embeddings, but there is
-        # an output-only bias for each token.
-        self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-
-        self.bias = nn.Parameter(torch.zeros(config.vocab_size))
-
-        # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
-        self.decoder.bias = self.bias
-
-    def forward(self, hidden_states):
-        hidden_states = self.transform(hidden_states)
-        hidden_states = self.decoder(hidden_states)
-        return hidden_states
+#     def forward(self, hidden_states):
+#         hidden_states = self.dense(hidden_states)
+#         hidden_states = self.transform_act_fn(hidden_states)
+#         hidden_states = self.LayerNorm(hidden_states)
+#         return hidden_states
 
 
-class BertOnlyMLMHead(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.predictions = BertLMPredictionHead(config)
+# class BertLMPredictionHead(nn.Module):
+#     def __init__(self, config):
+#         super().__init__()
+#         self.transform = BertPredictionHeadTransform(config)
 
-    def forward(self, sequence_output):
-        prediction_scores = self.predictions(sequence_output)
-        return prediction_scores
+#         # The output weights are the same as the input embeddings, but there is
+#         # an output-only bias for each token.
+#         self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+
+#         self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+
+#         # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
+#         self.decoder.bias = self.bias
+
+#     def forward(self, hidden_states):
+#         hidden_states = self.transform(hidden_states)
+#         hidden_states = self.decoder(hidden_states)
+#         return hidden_states
+
+
+# class BertOnlyMLMHead(nn.Module):
+#     def __init__(self, config):
+#         super().__init__()
+#         self.predictions = BertLMPredictionHead(config)
+
+#     def forward(self, sequence_output):
+#         prediction_scores = self.predictions(sequence_output)
+#         return prediction_scores
 
 
 class BertPreTrainedModel(PreTrainedModel):
@@ -436,10 +433,10 @@ class BertModel(BertPreTrainedModel):
     
     def forward(
         self,
-        input_ids=None,
+        # input_ids=None,
         attention_mask=None,
-        position_ids=None,
-        inputs_embeds=None,
+        # position_ids=None,
+        # inputs_embeds=None,
 
         encoder_embeds=None,
         encoder_hidden_states=None,
@@ -459,27 +456,27 @@ class BertModel(BertPreTrainedModel):
         # encoder_hidden_states=image_embeds, # size() -- [1, 145, 512]
         # encoder_attention_mask=image_atts, # size() -- [1, 145]
 
-        if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
-        elif input_ids is not None:
-            input_shape = input_ids.size()
-            batch_size, seq_length = input_shape
-            device = input_ids.device
-        elif inputs_embeds is not None:
-            input_shape = inputs_embeds.size()[:-1]
-            batch_size, seq_length = input_shape
-            device = inputs_embeds.device
-        elif encoder_embeds is not None: # True   
-            input_shape = encoder_embeds.size()[:-1]
-            batch_size, seq_length = input_shape 
-            device = encoder_embeds.device
-        else:
-            raise ValueError("You have to specify either input_ids or inputs_embeds or encoder_embeds")
+        # dump_is_none("BertModel position_ids", position_ids)
 
-        # past_key_values_length
-        past_key_values_length = 0 
+        # dump_is_none("BertModel inputs_embeds", inputs_embeds)
+
+        # if inputs_embeds is not None:
+        #     input_shape = inputs_embeds.size()[:-1]
+        #     batch_size, seq_length = input_shape
+        #     device = inputs_embeds.device
+        # elif encoder_embeds is not None: # True   
+        #     input_shape = encoder_embeds.size()[:-1]
+        #     batch_size, seq_length = input_shape 
+        #     device = encoder_embeds.device
+        # else:
+        #     raise ValueError("You have to specify either input_ids or inputs_embeds or encoder_embeds")
+
+        input_shape = encoder_embeds.size()[:-1]
+        batch_size, seq_length = input_shape 
+        device = encoder_embeds.device
+
         if attention_mask is None:
-            attention_mask = torch.ones(((batch_size, seq_length + past_key_values_length)), device=device)
+            attention_mask = torch.ones(((batch_size, seq_length)), device=device)
             
         # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
         # ourselves in which case we just need to make it broadcastable to all heads.
@@ -487,32 +484,40 @@ class BertModel(BertPreTrainedModel):
 
         # If a 2D or 3D attention mask is provided for the cross-attention
         # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
-        if encoder_hidden_states is not None:
-            if type(encoder_hidden_states) == list:
-                encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states[0].size()
-            else:
-                encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states.size()
-            encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
-            
-            if type(encoder_attention_mask) == list:
-                encoder_extended_attention_mask = [self.invert_attention_mask(mask) for mask in encoder_attention_mask]
-            elif encoder_attention_mask is None:
-                encoder_attention_mask = torch.ones(encoder_hidden_shape, device=device)
-                encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
-            else:    
-                encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
-        else:
-            encoder_extended_attention_mask = None
 
-        if encoder_embeds is None: # False
-            embedding_output = self.embeddings(
-                input_ids=None, # input_ids,
-                position_ids=position_ids,
-                inputs_embeds=None, # inputs_embeds,
-                past_key_values_length=past_key_values_length,
-            )
-        else:
-            embedding_output = encoder_embeds
+        # dump_is_none("BertModel encoder_hidden_states", encoder_hidden_states)
+
+        # if encoder_hidden_states is not None: # True
+        #     if type(encoder_hidden_states) == list:
+        #         encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states[0].size()
+        #     else:
+        #         encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states.size()
+        #     encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
+
+        #     dump_is_none("BertModel encoder_attention_mask", encoder_attention_mask)
+            
+        #     if type(encoder_attention_mask) == list:
+        #         encoder_extended_attention_mask = [self.invert_attention_mask(mask) for mask in encoder_attention_mask]
+        #     elif encoder_attention_mask is None:
+        #         encoder_attention_mask = torch.ones(encoder_hidden_shape, device=device)
+        #         encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
+        #     else:    
+        #         encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
+        # else:
+        #     encoder_extended_attention_mask = None
+        encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
+
+        # dump_is_none("BertModel encoder_embeds", encoder_embeds)
+        # if encoder_embeds is None: # False
+        #     embedding_output = self.embeddings(
+        #         input_ids=None, # input_ids,
+        #         position_ids=None, #position_ids,
+        #         inputs_embeds=None, # inputs_embeds,
+        #         past_key_values_length=0,
+        #     )
+        # else:
+        #     embedding_output = encoder_embeds
+        embedding_output = encoder_embeds
             
         encoder_outputs = self.encoder(
             embedding_output,
@@ -523,91 +528,3 @@ class BertModel(BertPreTrainedModel):
         
         return encoder_outputs
 
-
-class BertLMHeadModel(BertPreTrainedModel):
-
-    _keys_to_ignore_on_load_unexpected = [r"pooler"]
-    _keys_to_ignore_on_load_missing = [r"position_ids", r"predictions.decoder.bias"]
-
-    def __init__(self, config):
-        super().__init__(config)
-
-        self.bert = BertModel(config)
-        self.cls = BertOnlyMLMHead(config)
-
-        self.init_weights()
-
-    def get_output_embeddings(self):
-        return self.cls.predictions.decoder
-
-    def set_output_embeddings(self, new_embeddings):
-        self.cls.predictions.decoder = new_embeddings
-
-    def forward(
-        self,
-        input_ids=None,
-        attention_mask=None,
-        position_ids=None,
-        inputs_embeds=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
-        labels=None,
-        return_logits=False,            
-        reduction='mean',
-    ):
-        r"""
-        encoder_hidden_states  (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`, `optional`):
-            Sequence of hidden-states at the output of the last layer of the encoder. Used in the cross-attention if
-            the model is configured as a decoder.
-        encoder_attention_mask (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length)`, `optional`):
-            Mask to avoid performing attention on the padding token indices of the encoder input. This mask is used in
-            the cross-attention if the model is configured as a decoder. Mask values selected in ``[0, 1]``:
-            - 1 for tokens that are **not masked**,
-            - 0 for tokens that are **masked**.
-        labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size, sequence_length)`, `optional`):
-            Labels for computing the left-to-right language modeling loss (next word prediction). Indices should be in
-            ``[-100, 0, ..., config.vocab_size]`` (see ``input_ids`` docstring) Tokens with indices set to ``-100`` are
-            ignored (masked), the loss is only computed for the tokens with labels n ``[0, ..., config.vocab_size]``
-        Returns:
-        Example::
-            >>> from transformers import BertTokenizer, BertLMHeadModel, BertConfig
-            >>> import torch
-            >>> tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
-            >>> config = BertConfig.from_pretrained("bert-base-cased")
-            >>> model = BertLMHeadModel.from_pretrained('bert-base-cased', config=config)
-            >>> inputs = tokenizer("Hello, my dog is cute", return_tensors="pt")
-            >>> outputs = model(**inputs)
-            >>> prediction_logits = outputs.logits
-        """
-
-        outputs = self.bert(
-            input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            inputs_embeds=inputs_embeds,
-            encoder_hidden_states=encoder_hidden_states,
-            encoder_attention_mask=encoder_attention_mask,
-        )
-        
-        sequence_output = outputs[0]
-        prediction_scores = self.cls(sequence_output)
-        # sequence_output.shape torch.Size([85, 30, 768])
-        # prediction_scores.shape torch.Size([85, 30, 30524])
-        # labels.shape torch.Size([85, 30])
-
-
-        if return_logits:
-            return prediction_scores[:, :-1, :].contiguous()  
-
-        lm_loss = None
-        if labels is not None:
-            # we are doing next-token prediction; shift prediction scores and input ids by one
-            shifted_prediction_scores = prediction_scores[:, :-1, :].contiguous()
-            labels = labels[:, 1:].contiguous()
-            loss_fct = CrossEntropyLoss(reduction=reduction, label_smoothing=0.1) 
-            lm_loss = loss_fct(shifted_prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
-            if reduction=='none':
-                lm_loss = lm_loss.view(prediction_scores.size(0),-1).sum(1)               
-
-        output = (prediction_scores,) + outputs[2:]
-        return ((lm_loss,) + output) if lm_loss is not None else output
