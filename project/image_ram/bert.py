@@ -110,7 +110,6 @@ class BertSelfAttention(nn.Module):
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         past_key_value=None,
-        output_attentions=False,
     ):
         mixed_query_layer = self.query(hidden_states)
 
@@ -151,9 +150,8 @@ class BertSelfAttention(nn.Module):
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(*new_context_layer_shape)
 
-        outputs = (context_layer, attention_probs) if output_attentions else (context_layer,)
+        outputs = (context_layer, past_key_value)
 
-        outputs = outputs + (past_key_value,)
         return outputs
 
 
@@ -186,7 +184,6 @@ class BertAttention(nn.Module):
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         past_key_value=None,
-        output_attentions=False,
     ):
         self_outputs = self.self(
             hidden_states,
@@ -195,7 +192,6 @@ class BertAttention(nn.Module):
             encoder_hidden_states,
             encoder_attention_mask,
             past_key_value,
-            output_attentions,
         )
         attention_output = self.output(self_outputs[0], hidden_states)
         outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
@@ -252,7 +248,6 @@ class BertLayer(nn.Module):
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         past_key_value=None,
-        output_attentions=False,
     ):
         assert encoder_hidden_states is not None, "encoder_hidden_states must be given for cross-attention layers"
 
@@ -262,7 +257,6 @@ class BertLayer(nn.Module):
             head_mask,
             encoder_hidden_states,
             encoder_attention_mask,
-            output_attentions=output_attentions,
         )
         attention_output = cross_attention_outputs[0]
         outputs = cross_attention_outputs[1:-1]  # add cross attentions if we output attention weights  
@@ -299,11 +293,10 @@ class BertEncoder(nn.Module):
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         past_key_values=None,
-        output_attentions=False,
     ):
         all_hidden_states = None
-        all_self_attentions = () if output_attentions else None
-        all_cross_attentions = () if output_attentions and self.config.add_cross_attention else None
+        all_self_attentions = None
+        all_cross_attentions = None
         next_decoder_cache = ()
                
         for i in range(self.config.num_hidden_layers):
@@ -319,7 +312,6 @@ class BertEncoder(nn.Module):
                 encoder_hidden_states,
                 encoder_attention_mask,
                 past_key_value,
-                output_attentions,
             )
 
             hidden_states = layer_outputs[0]
@@ -480,7 +472,6 @@ class BertModel(BertPreTrainedModel):
         encoder_attention_mask=None,
 
         past_key_values=None,
-        output_attentions=None,
     ):
         r"""
         encoder_hidden_states  (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`, `optional`):
@@ -500,8 +491,6 @@ class BertModel(BertPreTrainedModel):
         # encoder_embeds=label_embed, # size() -- [1, 4585, 768]
         # encoder_hidden_states=image_embeds, # size() -- [1, 145, 512]
         # encoder_attention_mask=image_atts, # size() -- [1, 145]
-
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
 
         if input_ids is not None and inputs_embeds is not None:
             raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
@@ -573,7 +562,6 @@ class BertModel(BertPreTrainedModel):
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=encoder_extended_attention_mask,
             past_key_values=past_key_values,
-            output_attentions=output_attentions,
         )
         
         return encoder_outputs
@@ -609,7 +597,6 @@ class BertLMHeadModel(BertPreTrainedModel):
         encoder_attention_mask=None,
         labels=None,
         past_key_values=None,
-        output_attentions=None,
         return_logits=False,            
         reduction='mean',
     ):
@@ -651,7 +638,6 @@ class BertLMHeadModel(BertPreTrainedModel):
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=encoder_attention_mask,
             past_key_values=past_key_values,
-            output_attentions=output_attentions,
         )
         
         sequence_output = outputs[0]
