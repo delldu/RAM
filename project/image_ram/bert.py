@@ -26,6 +26,12 @@ from transformers.modeling_utils import (
 from transformers.models.bert.configuration_bert import BertConfig
 import pdb
 
+def dump_is_none(n, v):
+    if v is None:
+        print(f"--- {n} is None")
+    else:
+        print(f"--- {n} is not None, {v}")
+
 
 class BertEmbeddings(nn.Module):
     """Construct the embeddings from word and position embeddings."""
@@ -106,10 +112,8 @@ class BertSelfAttention(nn.Module):
         self,
         hidden_states,
         attention_mask=None,
-        head_mask=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
-        past_key_value=None,
     ):
         mixed_query_layer = self.query(hidden_states)
 
@@ -180,18 +184,14 @@ class BertAttention(nn.Module):
         self,
         hidden_states,
         attention_mask=None,
-        head_mask=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
-        past_key_value=None,
     ):
         self_outputs = self.self(
             hidden_states,
             attention_mask,
-            head_mask,
             encoder_hidden_states,
             encoder_attention_mask,
-            past_key_value,
         )
         attention_output = self.output(self_outputs[0], hidden_states)
         outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
@@ -244,17 +244,14 @@ class BertLayer(nn.Module):
         self,
         hidden_states,
         attention_mask=None,
-        head_mask=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
-        past_key_value=None,
     ):
         assert encoder_hidden_states is not None, "encoder_hidden_states must be given for cross-attention layers"
 
         cross_attention_outputs = self.crossattention(
             hidden_states,
             attention_mask,
-            head_mask,
             encoder_hidden_states,
             encoder_attention_mask,
         )
@@ -289,46 +286,24 @@ class BertEncoder(nn.Module):
         self,
         hidden_states,
         attention_mask=None,
-        head_mask=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
-        past_key_values=None,
     ):
-        # all_hidden_states = None
-        # all_self_attentions = None
-        # all_cross_attentions = None
         next_decoder_cache = ()
                
         for i in range(self.config.num_hidden_layers):
             layer_module = self.layer[i]
 
-            layer_head_mask = head_mask[i] if head_mask is not None else None
-            past_key_value = past_key_values[i] if past_key_values is not None else None
-
             layer_outputs = layer_module(
                 hidden_states,
                 attention_mask,
-                layer_head_mask,
                 encoder_hidden_states,
                 encoder_attention_mask,
-                past_key_value,
             )
 
             hidden_states = layer_outputs[0]
 
-        return tuple(
-            v
-            for v in [
-                hidden_states,
-                next_decoder_cache, # ()
-                # all_hidden_states, # None
-                # all_self_attentions, # None
-                # all_cross_attentions, # None
-            ]
-            if v is not None
-        )
-
-        # return tuple(hidden_states, next_decoder_cache)
+        return tuple([hidden_states, next_decoder_cache])
 
 
 class BertPooler(nn.Module):
@@ -399,9 +374,9 @@ class BertPreTrainedModel(PreTrainedModel):
     models.
     """
 
-    config_class = BertConfig
-    base_model_prefix = "bert"
-    _keys_to_ignore_on_load_missing = [r"position_ids"]
+    # config_class = BertConfig
+    # base_model_prefix = "bert"
+    # _keys_to_ignore_on_load_missing = [r"position_ids"]
 
     def _init_weights(self, module):
         """ Initialize the weights """
@@ -464,14 +439,11 @@ class BertModel(BertPreTrainedModel):
         input_ids=None,
         attention_mask=None,
         position_ids=None,
-        head_mask=None,
         inputs_embeds=None,
 
         encoder_embeds=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
-
-        past_key_values=None,
     ):
         r"""
         encoder_hidden_states  (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`, `optional`):
@@ -482,11 +454,6 @@ class BertModel(BertPreTrainedModel):
             the cross-attention if the model is configured as a decoder. Mask values selected in ``[0, 1]``:
             - 1 for tokens that are **not masked**,
             - 0 for tokens that are **masked**.
-        past_key_values (:obj:`tuple(tuple(torch.FloatTensor))` of length :obj:`config.n_layers` with each tuple having 4 tensors of shape :obj:`(batch_size, num_heads, sequence_length - 1, embed_size_per_head)`):
-            Contains precomputed key and value hidden states of the attention blocks. Can be used to speed up decoding.
-            If :obj:`past_key_values` are used, the user can optionally input only the last :obj:`decoder_input_ids`
-            (those that don't have their past key value states given to this model) of shape :obj:`(batch_size, 1)`
-            instead of all :obj:`decoder_input_ids` of shape :obj:`(batch_size, sequence_length)`.
         """
         # encoder_embeds=label_embed, # size() -- [1, 4585, 768]
         # encoder_hidden_states=image_embeds, # size() -- [1, 145, 512]
@@ -510,8 +477,7 @@ class BertModel(BertPreTrainedModel):
             raise ValueError("You have to specify either input_ids or inputs_embeds or encoder_embeds")
 
         # past_key_values_length
-        past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
-
+        past_key_values_length = 0 
         if attention_mask is None:
             attention_mask = torch.ones(((batch_size, seq_length + past_key_values_length)), device=device)
             
@@ -538,13 +504,6 @@ class BertModel(BertPreTrainedModel):
         else:
             encoder_extended_attention_mask = None
 
-        # Prepare head mask if needed
-        # 1.0 in head_mask indicate we keep the head
-        # attention_probs has shape bsz x n_heads x N x N
-        # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads]
-        # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
-        head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
-        
         if encoder_embeds is None: # False
             embedding_output = self.embeddings(
                 input_ids=None, # input_ids,
@@ -558,10 +517,8 @@ class BertModel(BertPreTrainedModel):
         encoder_outputs = self.encoder(
             embedding_output,
             attention_mask=extended_attention_mask,
-            head_mask=head_mask,
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=encoder_extended_attention_mask,
-            past_key_values=past_key_values,
         )
         
         return encoder_outputs
@@ -591,12 +548,10 @@ class BertLMHeadModel(BertPreTrainedModel):
         input_ids=None,
         attention_mask=None,
         position_ids=None,
-        head_mask=None,
         inputs_embeds=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
         labels=None,
-        past_key_values=None,
         return_logits=False,            
         reduction='mean',
     ):
@@ -613,11 +568,6 @@ class BertLMHeadModel(BertPreTrainedModel):
             Labels for computing the left-to-right language modeling loss (next word prediction). Indices should be in
             ``[-100, 0, ..., config.vocab_size]`` (see ``input_ids`` docstring) Tokens with indices set to ``-100`` are
             ignored (masked), the loss is only computed for the tokens with labels n ``[0, ..., config.vocab_size]``
-        past_key_values (:obj:`tuple(tuple(torch.FloatTensor))` of length :obj:`config.n_layers` with each tuple having 4 tensors of shape :obj:`(batch_size, num_heads, sequence_length - 1, embed_size_per_head)`):
-            Contains precomputed key and value hidden states of the attention blocks. Can be used to speed up decoding.
-            If :obj:`past_key_values` are used, the user can optionally input only the last :obj:`decoder_input_ids`
-            (those that don't have their past key value states given to this model) of shape :obj:`(batch_size, 1)`
-            instead of all :obj:`decoder_input_ids` of shape :obj:`(batch_size, sequence_length)`.
         Returns:
         Example::
             >>> from transformers import BertTokenizer, BertLMHeadModel, BertConfig
@@ -629,15 +579,14 @@ class BertLMHeadModel(BertPreTrainedModel):
             >>> outputs = model(**inputs)
             >>> prediction_logits = outputs.logits
         """
+
         outputs = self.bert(
             input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
-            head_mask=head_mask,
             inputs_embeds=inputs_embeds,
             encoder_hidden_states=encoder_hidden_states,
             encoder_attention_mask=encoder_attention_mask,
-            past_key_values=past_key_values,
         )
         
         sequence_output = outputs[0]
