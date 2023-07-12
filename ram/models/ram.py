@@ -15,8 +15,6 @@ from .utils import *
 
 warnings.filterwarnings("ignore")
 
-
-
 class RAM(nn.Module):
     def __init__(self,
                  med_config=f'{CONFIG_PATH}/configs/med_config.json',
@@ -44,30 +42,7 @@ class RAM(nn.Module):
 
         # create image encoder
         if vit == 'swin_b':
-            if image_size == 224:
-                vision_config_path = f'{CONFIG_PATH}/configs/swin/config_swinB_224.json'
-            elif image_size == 384:
-                vision_config_path = f'{CONFIG_PATH}/configs/swin/config_swinB_384.json'
-            vision_config = read_json(vision_config_path)
-            assert image_size == vision_config['image_res']
-            # assert config['patch_size'] == 32
-            vision_width = vision_config['vision_width']
 
-            self.visual_encoder = SwinTransformer(
-                img_size=vision_config['image_res'],
-                patch_size=4,
-                in_chans=3,
-                embed_dim=vision_config['embed_dim'],
-                depths=vision_config['depths'],
-                num_heads=vision_config['num_heads'],
-                window_size=vision_config['window_size'],
-                mlp_ratio=4.,
-                qkv_bias=True,
-                drop_rate=0.0,
-                drop_path_rate=0.1,
-                ape=False,
-                patch_norm=True,
-                use_checkpoint=False)
 
         elif vit == 'swin_l':
             if image_size == 224:
