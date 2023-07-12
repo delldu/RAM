@@ -3,24 +3,23 @@
  * Written by Xinyu Huang
 '''
 import argparse
-import numpy as np
-import random
 import time
-
 import torch
+import pdb
 
 from PIL import Image
 from ram.models import ram
-from ram import inference_ram as inference
+from ram import inference_ram # as inference
 from ram import get_transform
-
+from tqdm import tqdm
+import glob
 
 parser = argparse.ArgumentParser(
     description='Tag2Text inferece for tagging and captioning')
 parser.add_argument('--image',
                     metavar='DIR',
                     help='path to dataset',
-                    default='images/1641173_2291260800.jpg')
+                    default='images/demo/*.jpg')
 parser.add_argument('--pretrained',
                     metavar='DIR',
                     help='path to pretrained model',
@@ -48,13 +47,20 @@ if __name__ == "__main__":
     # torch.save(model.state_dict(), "/tmp/image_ram.pth") # 823M    
     model = model.to(device)
 
-    print(model)
+    # print(model)
 
-    image = transform(Image.open(args.image)).unsqueeze(0).to(device)
+    image_filenames = sorted(glob.glob(args.image))
 
-    start_time = time.time()
-    res = inference(image, model)
-    print("Spend time: ", time.time() - start_time)
+    results = []
+    progress_bar = tqdm(total=len(image_filenames))
+    for filename in image_filenames:
+        image = transform(Image.open(filename)).unsqueeze(0).to(device)
+        start_time = time.time()
+        res = inference_ram(image, model)
+        results.append(f"Parsing {filename} Spend time: {time.time() - start_time:.4f} seconds")
+        results.append(f"Image Tags: {res[0]}")
+        results.append(f"图像标签: {res[1]}")
+        results.append("-" * 64)
+    progress_bar.close()
 
-    print("Image Tags: ", res[0])
-    print("图像标签: ", res[1])
+    print("\n".join(results))
