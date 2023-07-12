@@ -21,7 +21,7 @@ if __name__ == "__main__":
     model, device = image_ram.get_ram_model()
 
     N = 100
-    B, C, H, W = 1, 3, model.MAX_H, model.MAX_W  # model.max_h, model.max_w
+    B, C, H, W = 1, 3, 384, 384
 
     mean_time = 0
     progress_bar = tqdm(total=N)

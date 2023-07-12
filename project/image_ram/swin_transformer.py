@@ -5,12 +5,8 @@
 # Written by Ze Liu
 # --------------------------------------------------------
 
-import numpy as np
-from scipy import interpolate
-
 import torch
 import torch.nn as nn
-import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 
 
@@ -324,18 +320,16 @@ class BasicLayer(nn.Module):
         drop_path (float | tuple[float], optional): Stochastic depth rate. Default: 0.0
         norm_layer (nn.Module, optional): Normalization layer. Default: nn.LayerNorm
         downsample (nn.Module | None, optional): Downsample layer at the end of the layer. Default: None
-        use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False.
     """
 
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
-                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None, use_checkpoint=False):
+                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None):
 
         super().__init__()
         self.dim = dim
         self.input_resolution = input_resolution
         self.depth = depth
-        self.use_checkpoint = use_checkpoint
 
         # build blocks
         self.blocks = nn.ModuleList([
@@ -357,10 +351,7 @@ class BasicLayer(nn.Module):
 
     def forward(self, x):
         for blk in self.blocks:
-            if self.use_checkpoint:
-                x = checkpoint.checkpoint(blk, x)
-            else:
-                x = blk(x)
+            x = blk(x)
         if self.downsample is not None:
             x = self.downsample(x)
         return x
@@ -402,8 +393,8 @@ class PatchEmbed(nn.Module):
     def forward(self, x):
         B, C, H, W = x.shape
         # FIXME look at relaxing size constraints
-        assert H == self.img_size[0] and W == self.img_size[1], \
-            f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
+        # assert H == self.img_size[0] and W == self.img_size[1], \
+        #     f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
         x = self.proj(x).flatten(2).transpose(1, 2)  # B Ph*Pw C
         if self.norm is not None:
             x = self.norm(x)
@@ -416,7 +407,6 @@ class SwinTransformer(nn.Module):
           https://arxiv.org/pdf/2103.14030
 
     Args:
-        img_size (int | tuple(int)): Input image size. Default 224
         patch_size (int | tuple(int)): Patch size. Default: 4
         in_chans (int): Number of input image channels. Default: 3
         num_classes (int): Number of classes for classification head. Default: 1000
@@ -431,39 +421,28 @@ class SwinTransformer(nn.Module):
         attn_drop_rate (float): Attention dropout rate. Default: 0
         drop_path_rate (float): Stochastic depth rate. Default: 0.1
         norm_layer (nn.Module): Normalization layer. Default: nn.LayerNorm.
-        ape (bool): If True, add absolute position embedding to the patch embedding. Default: False
-        patch_norm (bool): If True, add normalization after patch embedding. Default: True
-        use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False
     """
 
-    def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000,
+    def __init__(self, img_size=384, patch_size=4, in_chans=3, num_classes=1000,
                  embed_dim=96, depths=[2, 2, 6, 2], num_heads=[3, 6, 12, 24],
                  window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
-                 norm_layer=nn.LayerNorm, ape=False, patch_norm=True,
-                 use_checkpoint=False, **kwargs):
+                 norm_layer=nn.LayerNorm):
         super().__init__()
 
         self.num_classes = num_classes
         self.num_layers = len(depths)
         self.embed_dim = embed_dim
-        self.ape = ape
-        self.patch_norm = patch_norm
         self.num_features = int(embed_dim * 2 ** (self.num_layers - 1))
         self.mlp_ratio = mlp_ratio
 
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim,
-            norm_layer=norm_layer if self.patch_norm else None)
+            norm_layer=norm_layer)
         num_patches = self.patch_embed.num_patches
         patches_resolution = self.patch_embed.patches_resolution
         self.patches_resolution = patches_resolution
-
-        # absolute position embedding
-        if self.ape:
-            self.absolute_pos_embed = nn.Parameter(torch.zeros(1, num_patches, embed_dim))
-            trunc_normal_(self.absolute_pos_embed, std=.02)
 
         self.pos_drop = nn.Dropout(p=drop_rate)
 
@@ -485,12 +464,11 @@ class SwinTransformer(nn.Module):
                                drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
                                norm_layer=norm_layer,
                                downsample=PatchMerging if (i_layer < self.num_layers - 1) else None,
-                               use_checkpoint=use_checkpoint)
+                               )
             self.layers.append(layer)
 
         self.norm = norm_layer(self.num_features)
         self.avgpool = nn.AdaptiveAvgPool1d(1)
-        # self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
 
         self.apply(self._init_weights)
 
@@ -503,95 +481,14 @@ class SwinTransformer(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    @torch.jit.ignore
-    def no_weight_decay(self):
-        return {'absolute_pos_embed'}
-
-    @torch.jit.ignore
-    def no_weight_decay_keywords(self):
-        return {'relative_position_bias_table'}
-
-    def forward(self, x, idx_to_group_img=None, image_atts=None, **kwargs):
+    def forward(self, x):
         x = self.patch_embed(x)
-        if self.ape:
-            x = x + self.absolute_pos_embed
         x = self.pos_drop(x)
 
         for layer in self.layers:
             x = layer(x)
 
         x = self.norm(x)  # B L C
-
         x_cls = self.avgpool(x.transpose(1, 2))  # B C 1
 
-        if idx_to_group_img is None:
-            return torch.cat([x_cls.transpose(1, 2), x], dim=1)
-        else:
-            x_bs = torch.gather(x, dim=0, index=idx_to_group_img.view(-1, 1, 1).expand(-1, x.shape[1], x.shape[2]))
-            weights = image_atts[:, 1:].unsqueeze(2)  # B L 1
-            x_bs_cls = torch.sum((weights * x_bs).transpose(1, 2), dim=-1, keepdim=True)   # B C 1
-            x_bs_cls = x_bs_cls / torch.sum(weights.transpose(1, 2), dim=-1, keepdim=True)  # avgpool
-
-            return torch.cat([x_bs_cls.transpose(1, 2), x_bs], dim=1), \
-                   torch.cat([x_cls.transpose(1, 2), x], dim=1)
-
-
-def interpolate_relative_pos_embed(rel_pos_bias, dst_num_pos, param_name=''):
-    # from: https://github.com/microsoft/unilm/blob/8a0a1c1f4e7326938ea7580a00d56d7f17d65612/beit/run_class_finetuning.py#L348
-
-    # rel_pos_bias: relative_position_bias_table
-    src_num_pos, num_attn_heads = rel_pos_bias.size()
-
-    num_extra_tokens = 0
-    src_size = int((src_num_pos - num_extra_tokens) ** 0.5)
-    dst_size = int((dst_num_pos - num_extra_tokens) ** 0.5)
-    if src_size != dst_size:
-        print("Position interpolate %s from %dx%d to %dx%d" % (param_name, src_size, src_size, dst_size, dst_size))
-
-        # extra_tokens = rel_pos_bias[-num_extra_tokens:, :]
-        # rel_pos_bias = rel_pos_bias[:-num_extra_tokens, :]
-
-        def geometric_progression(a, r, n):
-            return a * (1.0 - r ** n) / (1.0 - r)
-
-        left, right = 1.01, 1.5
-        while right - left > 1e-6:
-            q = (left + right) / 2.0
-            gp = geometric_progression(1, q, src_size // 2)
-            if gp > dst_size // 2:
-                right = q
-            else:
-                left = q
-
-        # if q > 1.090307:
-        #     q = 1.090307
-
-        dis = []
-        cur = 1
-        for i in range(src_size // 2):
-            dis.append(cur)
-            cur += q ** (i + 1)
-
-        r_ids = [-_ for _ in reversed(dis)]
-
-        x = r_ids + [0] + dis
-        y = r_ids + [0] + dis
-
-        t = dst_size // 2.0
-        dx = np.arange(-t, t + 0.1, 1.0)
-        dy = np.arange(-t, t + 0.1, 1.0)
-
-        # print("Original positions = %s" % str(x))
-        # print("Target positions = %s" % str(dx))
-
-        all_rel_pos_bias = []
-
-        for i in range(num_attn_heads):
-            z = rel_pos_bias[:, i].view(src_size, src_size).float().numpy()
-            f = interpolate.interp2d(x, y, z, kind='cubic')
-            all_rel_pos_bias.append(
-                torch.Tensor(f(dx, dy)).contiguous().view(-1, 1).to(rel_pos_bias.device))
-
-        rel_pos_bias = torch.cat(all_rel_pos_bias, dim=-1)
-
-    return rel_pos_bias
+        return torch.cat([x_cls.transpose(1, 2), x], dim=1)

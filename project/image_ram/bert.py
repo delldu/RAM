@@ -495,16 +495,13 @@ class BertModel(BertPreTrainedModel):
     input to the forward pass.
     """
 
-    def __init__(self, config, add_pooling_layer=True):
+    def __init__(self, config):
         super().__init__(config)
         self.config = config
 
         self.embeddings = BertEmbeddings(config)
         
         self.encoder = BertEncoder(config)
-
-        self.pooler = BertPooler(config) if add_pooling_layer else None
-
         self.init_weights()
  
 
@@ -538,9 +535,11 @@ class BertModel(BertPreTrainedModel):
         position_ids=None,
         head_mask=None,
         inputs_embeds=None,
+
         encoder_embeds=None,
         encoder_hidden_states=None,
         encoder_attention_mask=None,
+
         past_key_values=None,
         output_attentions=None,
         output_hidden_states=None,
@@ -560,6 +559,10 @@ class BertModel(BertPreTrainedModel):
             (those that don't have their past key value states given to this model) of shape :obj:`(batch_size, 1)`
             instead of all :obj:`decoder_input_ids` of shape :obj:`(batch_size, sequence_length)`.
         """
+        # encoder_embeds=label_embed, # size() -- [1, 4585, 768]
+        # encoder_hidden_states=image_embeds, # size() -- [1, 145, 512]
+        # encoder_attention_mask=image_atts, # size() -- [1, 145]
+
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -638,10 +641,8 @@ class BertModel(BertPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
         )
-        sequence_output = encoder_outputs[0]
-        pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
-
-        return (sequence_output, pooled_output) + encoder_outputs[1:]
+        
+        return encoder_outputs
 
 
 class BertLMHeadModel(BertPreTrainedModel):
@@ -652,7 +653,7 @@ class BertLMHeadModel(BertPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
 
-        self.bert = BertModel(config, add_pooling_layer=False)
+        self.bert = BertModel(config)
         self.cls = BertOnlyMLMHead(config)
 
         self.init_weights()

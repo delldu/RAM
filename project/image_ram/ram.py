@@ -68,10 +68,7 @@ class RAM(nn.Module):
             mlp_ratio=4.,
             qkv_bias=True,
             drop_rate=0.0,
-            drop_path_rate=0.1,
-            ape=False,
-            patch_norm=True,
-            use_checkpoint=False)
+            drop_path_rate=0.1)
 
         # create tokenzier
         self.tokenizer = init_tokenizer()
@@ -87,7 +84,7 @@ class RAM(nn.Module):
         self.num_class = len(self.tag_list)
         q2l_config = BertConfig.from_json_file(f'{CONFIG_PATH}/config/q2l_config.json')
         q2l_config.encoder_width = 512
-        self.tagging_head = BertModel(config=q2l_config, add_pooling_layer=False)
+        self.tagging_head = BertModel(config=q2l_config)
         self.tagging_head.resize_token_embeddings(len(self.tokenizer))
         self.label_embed = nn.Parameter(torch.zeros(self.num_class, q2l_config.encoder_width))
         self.wordvec_proj = nn.Linear(512, q2l_config.hidden_size) # q2l_config.hidden_size -- 768
