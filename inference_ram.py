@@ -5,6 +5,7 @@
 import argparse
 import numpy as np
 import random
+import time
 
 import torch
 
@@ -23,7 +24,7 @@ parser.add_argument('--image',
 parser.add_argument('--pretrained',
                     metavar='DIR',
                     help='path to pretrained model',
-                    default='pretrained/tag2text_swin_14m.pth')
+                    default='pretrained/ram_swin_large_14m.pth')
 parser.add_argument('--image-size',
                     default=384,
                     type=int,
@@ -44,11 +45,16 @@ if __name__ == "__main__":
                              image_size=args.image_size,
                              vit='swin_l')
     model.eval()
-
+    # torch.save(model.state_dict(), "/tmp/image_ram.pth") # 823M    
     model = model.to(device)
+
+    print(model)
 
     image = transform(Image.open(args.image)).unsqueeze(0).to(device)
 
+    start_time = time.time()
     res = inference(image, model)
+    print("Spend time: ", time.time() - start_time)
+
     print("Image Tags: ", res[0])
     print("图像标签: ", res[1])

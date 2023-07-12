@@ -104,14 +104,14 @@ class RAM(nn.Module):
 
         # Tag2Text employ encoder-decoder architecture for image-tag-text generation: image-tag interaction encoder and image-tag-text decoder
         # create image-tag interaction encoder
-        encoder_config = BertConfig.from_json_file(med_config)
-        encoder_config.encoder_width = 512
-        self.tag_encoder = BertModel(config=encoder_config,
-                                     add_pooling_layer=False)
+        # encoder_config = BertConfig.from_json_file(med_config)
+        # encoder_config.encoder_width = 512
+        # self.tag_encoder = BertModel(config=encoder_config,
+        #                              add_pooling_layer=False)
 
         # create image-tag-text decoder
-        decoder_config = BertConfig.from_json_file(med_config)
-        self.text_decoder = BertLMHeadModel(config=decoder_config)
+        # decoder_config = BertConfig.from_json_file(med_config)
+        # self.text_decoder = BertLMHeadModel(config=decoder_config)
 
         self.delete_tag_index = delete_tag_index
         self.prompt = prompt
@@ -142,8 +142,8 @@ class RAM(nn.Module):
         self.del_selfattention()
 
         # share weights of the lowest 2-layer of "image-tag interaction encoder" with the "image-tag recogntion decoder"
-        tie_encoder_decoder_weights(self.tag_encoder, self.tagging_head, '',
-                                    ' ')
+        # tie_encoder_decoder_weights(self.tag_encoder, self.tagging_head, '',
+        #                             ' ')
         self.image_proj = nn.Linear(vision_width, 512)
         # self.label_embed = nn.Parameter(torch.load(f'{CONFIG_PATH}/data/textual_label_embedding.pth',map_location='cpu').float())
 
