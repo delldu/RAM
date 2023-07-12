@@ -101,10 +101,11 @@ class BertSelfAttention(nn.Module):
             self.value = nn.Linear(config.hidden_size, self.all_head_size)
 
         self.dropout = nn.Dropout(config.attention_probs_dropout_prob)
+        self.softmax = nn.Softmax(dim=3)
     
     def transpose_for_scores(self, x):
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
-        x = x.view(*new_x_shape)
+        B, C, HW = x.size()
+        x = x.view((B, C, self.num_attention_heads, self.attention_head_size))
         return x.permute(0, 2, 1, 3)
 
     def forward(
@@ -116,7 +117,7 @@ class BertSelfAttention(nn.Module):
     ):
         mixed_query_layer = self.query(hidden_states)
 
-        is_cross_attention = encoder_hidden_states is not None
+        is_cross_attention:bool = encoder_hidden_states is not None
 
         key_layer = self.transpose_for_scores(self.key(encoder_hidden_states))
         value_layer = self.transpose_for_scores(self.value(encoder_hidden_states))
@@ -140,7 +141,9 @@ class BertSelfAttention(nn.Module):
             attention_scores = attention_scores + attention_mask
 
         # Normalize the attention scores to probabilities.
-        attention_probs = nn.Softmax(dim=-1)(attention_scores)
+        # dump_is_none("attention_scores.size()", attention_scores.size())
+        # attention_probs.size() -- [1, 4, 4585, 145]
+        attention_probs = self.softmax(attention_scores)
         
         # This is actually dropping out entire tokens to attend to, which might
         # seem a bit unusual, but is taken from the original Transformer paper.
@@ -149,8 +152,12 @@ class BertSelfAttention(nn.Module):
         context_layer = torch.matmul(attention_probs_dropped, value_layer)
 
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
-        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
-        context_layer = context_layer.view(*new_context_layer_shape)
+
+        # context_layer.size() -- [1, 4585, 4, 192]
+        # new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+        # context_layer = context_layer.view(*new_context_layer_shape)
+        B, C1, C2, C3 = context_layer.size()
+        context_layer = context_layer.view(B, C1, self.all_head_size)
 
         outputs = (context_layer, past_key_value)
 
