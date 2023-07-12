@@ -294,9 +294,9 @@ class BertEncoder(nn.Module):
         encoder_attention_mask=None,
         past_key_values=None,
     ):
-        all_hidden_states = None
-        all_self_attentions = None
-        all_cross_attentions = None
+        # all_hidden_states = None
+        # all_self_attentions = None
+        # all_cross_attentions = None
         next_decoder_cache = ()
                
         for i in range(self.config.num_hidden_layers):
@@ -321,9 +321,9 @@ class BertEncoder(nn.Module):
             for v in [
                 hidden_states,
                 next_decoder_cache, # ()
-                all_hidden_states, # None
-                all_self_attentions, # None
-                all_cross_attentions, # None
+                # all_hidden_states, # None
+                # all_self_attentions, # None
+                # all_cross_attentions, # None
             ]
             if v is not None
         )
