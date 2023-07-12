@@ -48,9 +48,6 @@ class RAM(nn.Module):
             delete_tag_index (list): delete some tags that may disturb captioning
         """
         super().__init__()
-        self.MAX_H = 384
-        self.MAX_W = 384
-
         vision_config_path = f'{CONFIG_PATH}/config/config_swinL_384.json'
         vision_config = read_json(vision_config_path)
         assert image_size == vision_config['image_res']

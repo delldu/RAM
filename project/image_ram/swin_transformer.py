@@ -8,6 +8,7 @@
 import torch
 import torch.nn as nn
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
+from typing import Optional
 
 
 class Mlp(nn.Module):
@@ -29,7 +30,7 @@ class Mlp(nn.Module):
         return x
 
 
-def window_partition(x, window_size):
+def window_partition(x, window_size: int):
     """
     Args:
         x: (B, H, W, C)
@@ -44,7 +45,7 @@ def window_partition(x, window_size):
     return windows
 
 
-def window_reverse(windows, window_size, H, W):
+def window_reverse(windows, window_size: int, H: int, W: int):
     """
     Args:
         windows: (num_windows*B, window_size, window_size, C)
@@ -109,7 +110,7 @@ class WindowAttention(nn.Module):
         trunc_normal_(self.relative_position_bias_table, std=.02)
         self.softmax = nn.Softmax(dim=-1)
 
-    def forward(self, x, mask=None):
+    def forward(self, x, mask: Optional[torch.Tensor]=None):
         """
         Args:
             x: input features with shape of (num_windows*B, N, C)
