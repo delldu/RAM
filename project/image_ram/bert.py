@@ -12,16 +12,11 @@ import math
 from typing import Optional, Tuple
 
 import torch
-from torch import Tensor, device
+# from torch import Tensor, device
 from torch import nn
-# from torch.nn import CrossEntropyLoss
-import torch.nn.functional as F
+# import torch.nn.functional as F
 
 from transformers.activations import ACT2FN
-
-# from transformers.modeling_utils import (
-#     PreTrainedModel,
-# )
 from transformers.models.bert.configuration_bert import BertConfig
 import pdb
 
@@ -30,51 +25,6 @@ def dump_is_none(n, v):
         print(f"--- {n} is None")
     else:
         print(f"--- {n} is not None, {v}")
-
-
-# class BertEmbeddings(nn.Module):
-#     """Construct the embeddings from word and position embeddings."""
-
-#     def __init__(self, config):
-#         super().__init__()
-#         self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
-#         self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
-
-#         # self.LayerNorm is not snake-cased to stick with TensorFlow model variable name and be able to load
-#         # any TensorFlow checkpoint file
-#         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-#         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-
-#         # position_ids (1, len position emb) is contiguous in memory and exported when serialized
-#         self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)))
-#         self.position_embedding_type = getattr(config, "position_embedding_type", "absolute") # absolute
-        
-#         self.config = config
-
-#     def forward(
-#         self, input_ids=None, position_ids=None, inputs_embeds=None):
-#         if input_ids is not None:
-#             input_shape = input_ids.size()
-#         else:
-#             input_shape = inputs_embeds.size()[:-1]
-
-#         seq_length = input_shape[1]
-
-#         if position_ids is None:
-#             position_ids = self.position_ids[:, 0 : seq_length]
-
-#         if inputs_embeds is None:
-#             inputs_embeds = self.word_embeddings(input_ids)
-
-#         embeddings = inputs_embeds
-
-#         if self.position_embedding_type == "absolute":
-#             position_embeddings = self.position_embeddings(position_ids)
-#             # print('add position_embeddings!!!!')
-#             embeddings += position_embeddings
-#         embeddings = self.LayerNorm(embeddings)
-#         embeddings = self.dropout(embeddings)
-#         return embeddings
 
 
 class BertSelfAttention(nn.Module):
@@ -140,7 +90,6 @@ class BertSelfAttention(nn.Module):
             attention_scores = attention_scores + attention_mask
 
         # Normalize the attention scores to probabilities.
-        # dump_is_none("attention_scores.size()", attention_scores.size())
         # attention_probs.size() -- [1, 4, 4585, 145]
         attention_probs = self.softmax(attention_scores)
         
@@ -153,8 +102,6 @@ class BertSelfAttention(nn.Module):
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
 
         # context_layer.size() -- [1, 4585, 4, 192]
-        # new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
-        # context_layer = context_layer.view(*new_context_layer_shape)
         B, C1, C2, C3 = context_layer.size()
         context_layer = context_layer.view(B, C1, self.all_head_size)
 
@@ -299,28 +246,7 @@ class BertEncoder(nn.Module):
         return hidden_states
 
 
-# class BertPreTrainedModel(nn.Module): # PreTrainedModel
-#     """
-#     An abstract class to handle weights initialization and a simple interface for downloading and loading pretrained
-#     models.
-#     """
-#     # def __init__(self, config):
-#     #     super(BertPreTrainedModel).__init__()
-
-#     def _init_weights(self, module):
-#         """ Initialize the weights """
-#         if isinstance(module, (nn.Linear, nn.Embedding)):
-#             # Slightly different from the TF version which uses truncated_normal for initialization
-#             # cf https://github.com/pytorch/pytorch/pull/5617
-#             module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
-#         elif isinstance(module, nn.LayerNorm):
-#             module.bias.data.zero_()
-#             module.weight.data.fill_(1.0)
-#         if isinstance(module, nn.Linear) and module.bias is not None:
-#             module.bias.data.zero_()
-
-
-class BertModel(nn.Module): # nn.Module, BertPreTrainedModel
+class BertModel(nn.Module):
     """
     The model can behave as an encoder (with only self-attention) as well as a decoder, in which case a layer of
     cross-attention is added between the self-attention layers, following the architecture described in `Attention is
@@ -331,24 +257,13 @@ class BertModel(nn.Module): # nn.Module, BertPreTrainedModel
     """
 
     def __init__(self, config):
-        # super().__init__(config)
         super().__init__()
 
         self.config = config
-        # self.embeddings = BertEmbeddings(config)
-        
         self.encoder = BertEncoder(config)
-        # self.init_weights()
  
 
-    # def get_input_embeddings(self):
-    #     return self.embeddings.word_embeddings
-
-    # def set_input_embeddings(self, value):
-    #     self.embeddings.word_embeddings = value
-
-
-    def get_extended_attention_mask(self, attention_mask: Tensor) -> Tensor:
+    def get_extended_attention_mask(self, attention_mask):
         """
         Makes broadcastable attention and causal masks so that future and masked tokens are ignored.
         """
@@ -399,7 +314,7 @@ class BertModel(nn.Module): # nn.Module, BertPreTrainedModel
         
         return encoder_outputs
 
-    def invert_attention_mask(self, encoder_attention_mask: Tensor) -> Tensor:
+    def invert_attention_mask(self, encoder_attention_mask):
         # encoder_attention_mask.size() -- [1, 145]
         encoder_extended_attention_mask = encoder_attention_mask[:, None, None, :]
         # encoder_extended_attention_mask = encoder_extended_attention_mask.to(dtype=self.dtype)  # fp16 compatibility
