@@ -9,28 +9,23 @@
 '''
 
 import math
+import torch
+from torch import nn
+from transformers.activations import ACT2FN
 from typing import Optional, Tuple
 
-import torch
-# from torch import Tensor, device
-from torch import nn
-# import torch.nn.functional as F
-
-from transformers.activations import ACT2FN
-from transformers.models.bert.configuration_bert import BertConfig
 import pdb
 
-def dump_is_none(n, v):
-    if v is None:
-        print(f"--- {n} is None")
-    else:
-        print(f"--- {n} is not None, {v}")
+# def dump_is_none(n, v):
+#     if v is None:
+#         print(f"--- {n} is None")
+#     else:
+#         print(f"--- {n} is not None, {v}")
 
 
 class BertSelfAttention(nn.Module):
     def __init__(self, config, is_cross_attention):
         super().__init__()
-        self.config = config
         if config.hidden_size % config.num_attention_heads != 0 and not hasattr(config, "embedding_size"):
             raise ValueError(
                 "The hidden size (%d) is not a multiple of the number of attention "
@@ -60,12 +55,11 @@ class BertSelfAttention(nn.Module):
     def forward(
         self,
         hidden_states,
-        attention_mask=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
-    ):
+        attention_mask,
+        encoder_hidden_states,
+        encoder_attention_mask,
+    )->Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         mixed_query_layer = self.query(hidden_states)
-
         is_cross_attention:bool = encoder_hidden_states is not None
 
         key_layer = self.transpose_for_scores(self.key(encoder_hidden_states))
@@ -134,10 +128,10 @@ class BertAttention(nn.Module):
     def forward(
         self,
         hidden_states,
-        attention_mask=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
-    ):
+        attention_mask,
+        encoder_hidden_states,
+        encoder_attention_mask,
+    )->Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         self_outputs = self.self(
             hidden_states,
             attention_mask,
@@ -146,6 +140,7 @@ class BertAttention(nn.Module):
         )
         attention_output = self.output(self_outputs[0], hidden_states)
         outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
+
         return outputs
 
 
@@ -181,7 +176,6 @@ class BertOutput(nn.Module):
 class BertLayer(nn.Module):
     def __init__(self, config, layer_num):
         super().__init__()
-        # self.config = config
         self.attention = BertAttention(config)      
         self.crossattention = BertAttention(config, is_cross_attention=True)
         self.intermediate = BertIntermediate(config)
@@ -222,16 +216,14 @@ class BertLayer(nn.Module):
 class BertEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.config = config
-        self.layer = nn.ModuleList([BertLayer(config,i) for i in range(config.num_hidden_layers)])
-        # self.gradient_checkpointing = False
+        self.layer = nn.ModuleList([BertLayer(config, i) for i in range(config.num_hidden_layers)])
 
     def forward(
         self,
         hidden_states,
-        attention_mask=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
+        attention_mask,
+        encoder_hidden_states,
+        encoder_attention_mask,
     ):
         for i, layer_module in enumerate(self.layer):
             layer_outputs = layer_module(
@@ -258,26 +250,13 @@ class BertModel(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-
-        self.config = config
         self.encoder = BertEncoder(config)
- 
 
-    def get_extended_attention_mask(self, attention_mask):
-        """
-        Makes broadcastable attention and causal masks so that future and masked tokens are ignored.
-        """
-        extended_attention_mask = attention_mask[:, None, None, :]
-        # extended_attention_mask = extended_attention_mask.to(dtype=self.dtype)  # fp16 compatibility
-        extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
-        return extended_attention_mask
-    
     def forward(
         self,
-        attention_mask=None,
-        encoder_embeds=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
+        encoder_embeds,
+        encoder_hidden_states,
+        encoder_attention_mask,
     ):
         r"""
         encoder_hidden_states  (:obj:`torch.FloatTensor` of shape :obj:`(batch_size, sequence_length, hidden_size)`, `optional`):
@@ -295,10 +274,7 @@ class BertModel(nn.Module):
 
         input_shape = encoder_embeds.size()[:-1]
         batch_size, seq_length = input_shape 
-        device = encoder_embeds.device
-
-        if attention_mask is None:
-            attention_mask = torch.ones(((batch_size, seq_length)), device=device)
+        attention_mask = torch.ones(((batch_size, seq_length)), device=encoder_embeds.device)
             
         # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
         # ourselves in which case we just need to make it broadcastable to all heads.
@@ -314,11 +290,21 @@ class BertModel(nn.Module):
         
         return encoder_outputs
 
+
+    def get_extended_attention_mask(self, attention_mask):
+        """
+        Makes broadcastable attention and causal masks so that future and masked tokens are ignored.
+        """
+        extended_attention_mask = attention_mask[:, None, None, :]
+        # extended_attention_mask = extended_attention_mask.to(dtype=self.dtype)  # fp16 compatibility
+        extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
+        return extended_attention_mask
+
     def invert_attention_mask(self, encoder_attention_mask):
         # encoder_attention_mask.size() -- [1, 145]
         encoder_extended_attention_mask = encoder_attention_mask[:, None, None, :]
         # encoder_extended_attention_mask = encoder_extended_attention_mask.to(dtype=self.dtype)  # fp16 compatibility
         # encoder_extended_attention_mask = (1.0 - encoder_extended_attention_mask) * torch.finfo(self.dtype).min
-        encoder_extended_attention_mask = (1.0 - encoder_extended_attention_mask) * torch.finfo(torch.float32).min
+        encoder_extended_attention_mask = (1.0 - encoder_extended_attention_mask) * -10000.0
 
         return encoder_extended_attention_mask

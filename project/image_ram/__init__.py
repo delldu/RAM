@@ -1,10 +1,10 @@
-"""Image/Video Segment Package."""  # coding=utf-8
+"""Image Recognize Anything Model Package."""  # coding=utf-8
 #
 # /************************************************************************************
 # ***
-# ***    Copyright Dell 2021, 2022(18588220928@163.com) All Rights Reserved.
+# ***    Copyright Dell 2023(18588220928@163.com) All Rights Reserved.
 # ***
-# ***    File Author: Dell, 2021年 12月 14日 星期二 00:22:28 CST
+# ***    File Author: Dell, Thu 13 Jul 2023 01:55:56 PM CST
 # ***
 # ************************************************************************************/
 #
@@ -14,11 +14,16 @@ __version__ = "1.0.0"
 import os
 from tqdm import tqdm
 from PIL import Image
+import numpy as np
 
 import torch
 import todos
 from . import ram
 from torchvision.transforms import Normalize, Compose, Resize, ToTensor
+from pathlib import Path
+import pdb
+
+CONFIG_PATH=(Path(__file__).resolve().parents[0])
 
 def get_transform(image_size=384):
     return Compose([
@@ -28,8 +33,11 @@ def get_transform(image_size=384):
         Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
-
-import pdb
+def load_tag_list(tag_list_file):
+    with open(tag_list_file, 'r', encoding="utf-8") as f:
+        tag_list = f.read().splitlines()
+    tag_list = np.array(tag_list)
+    return tag_list
 
 def get_tvm_model():
     """
@@ -55,11 +63,11 @@ def get_ram_model():
 
     print(f"Running model on {device} ...")
     # print(model)
-    
-    # model = torch.jit.script(model)
-    # todos.data.mkdir("output")
-    # if not os.path.exists("output/image_ram.torch"):
-    #     model.save("output/image_ram.torch")
+
+    model = torch.jit.script(model)
+    todos.data.mkdir("output")
+    if not os.path.exists("output/image_ram.torch"):
+        model.save("output/image_ram.torch")
 
     return model, device
 
@@ -71,6 +79,9 @@ def image_ram_predict(input_files, output_dir):
     # load model
     model, device = get_ram_model()
     transform = get_transform()
+
+    english_tag_list = load_tag_list(f"{CONFIG_PATH}/data/ram_tag_list.txt")
+    chinese_tag_list = load_tag_list(f"{CONFIG_PATH}/data/ram_tag_list_chinese.txt")
 
     # load files
     image_filenames = todos.data.load_files(input_files)
@@ -85,10 +96,12 @@ def image_ram_predict(input_files, output_dir):
         input_tensor = transform(image).unsqueeze(0).to(device)
 
         with torch.no_grad():
-            eng_tags, chinese_tags = model(input_tensor)
+            tag_index = model(input_tensor).cpu()
 
         results.append(f"File name: {filename}")
-        results.append(f"Image Tags: {eng_tags}")
+        english_tags = ' | '.join(english_tag_list[tag_index])
+        chinese_tags = ' | '.join(chinese_tag_list[tag_index])
+        results.append(f"Image Tags: {english_tags}")
         results.append(f"图像标签: {chinese_tags}")
         results.append("-" * 128)
     progress_bar.close()
