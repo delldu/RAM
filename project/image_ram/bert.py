@@ -341,11 +341,11 @@ class BertModel(nn.Module): # nn.Module, BertPreTrainedModel
         # self.init_weights()
  
 
-    def get_input_embeddings(self):
-        return self.embeddings.word_embeddings
+    # def get_input_embeddings(self):
+    #     return self.embeddings.word_embeddings
 
-    def set_input_embeddings(self, value):
-        self.embeddings.word_embeddings = value
+    # def set_input_embeddings(self, value):
+    #     self.embeddings.word_embeddings = value
 
 
     def get_extended_attention_mask(self, attention_mask: Tensor) -> Tensor:
