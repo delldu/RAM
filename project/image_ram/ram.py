@@ -82,7 +82,7 @@ class RAM(nn.Module):
         q2l_config = BertConfig.from_json_file(f'{CONFIG_PATH}/config/q2l_config.json')
         q2l_config.encoder_width = 512
         self.tagging_head = BertModel(config=q2l_config)
-        self.tagging_head.resize_token_embeddings(len(self.tokenizer))
+        # self.tagging_head.resize_token_embeddings(len(self.tokenizer))
         self.label_embed = nn.Parameter(torch.zeros(self.num_class, q2l_config.encoder_width))
         self.wordvec_proj = nn.Linear(512, q2l_config.hidden_size) # q2l_config.hidden_size -- 768
 
@@ -110,12 +110,15 @@ class RAM(nn.Module):
 
     # delete self-attention layer of image-tag recognition decoder to reduce computation, follower Query2Label
     def del_selfattention(self):
-        del self.tagging_head.embeddings
+        # del self.tagging_head.embeddings
         for layer in self.tagging_head.encoder.layer:
             del layer.attention
 
-    def forward(self, image, threshold=0.68):
+    def forward(self, image):
+        # return image
+
         label_embed = F.relu(self.wordvec_proj(self.label_embed))
+
 
         image_embeds = self.image_proj(self.visual_encoder(image))
         image_atts = torch.ones(image_embeds.size()[:-1], dtype=torch.long).to(image.device)
@@ -123,6 +126,7 @@ class RAM(nn.Module):
         # recognized image tags using image-tag recogntiion decoder
         image_cls_embeds = image_embeds[:, 0, :]
         image_spatial_embeds = image_embeds[:, 1:, :]
+
 
         bs = image_spatial_embeds.shape[0]
         label_embed = label_embed.unsqueeze(0).repeat(bs, 1, 1)
@@ -132,7 +136,8 @@ class RAM(nn.Module):
             encoder_attention_mask=image_atts,
         )
 
-        logits = self.fc(tagging_embed[0]).squeeze(-1)
+        logits = self.fc(tagging_embed).squeeze(-1)
+
 
         targets = torch.where(
             torch.sigmoid(logits) > self.class_threshold.to(image.device),

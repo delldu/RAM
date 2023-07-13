@@ -12,17 +12,16 @@ import math
 from typing import Optional, Tuple
 
 import torch
-from torch import Tensor, device, dtype, nn
+from torch import Tensor, device
 from torch import nn
 # from torch.nn import CrossEntropyLoss
 import torch.nn.functional as F
 
 from transformers.activations import ACT2FN
 
-from transformers.modeling_utils import (
-    PreTrainedModel,
-    apply_chunking_to_forward,
-)
+# from transformers.modeling_utils import (
+#     PreTrainedModel,
+# )
 from transformers.models.bert.configuration_bert import BertConfig
 import pdb
 
@@ -33,49 +32,49 @@ def dump_is_none(n, v):
         print(f"--- {n} is not None, {v}")
 
 
-class BertEmbeddings(nn.Module):
-    """Construct the embeddings from word and position embeddings."""
+# class BertEmbeddings(nn.Module):
+#     """Construct the embeddings from word and position embeddings."""
 
-    def __init__(self, config):
-        super().__init__()
-        self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
-        self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
+#     def __init__(self, config):
+#         super().__init__()
+#         self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
+#         self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
 
-        # self.LayerNorm is not snake-cased to stick with TensorFlow model variable name and be able to load
-        # any TensorFlow checkpoint file
-        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+#         # self.LayerNorm is not snake-cased to stick with TensorFlow model variable name and be able to load
+#         # any TensorFlow checkpoint file
+#         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+#         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
-        # position_ids (1, len position emb) is contiguous in memory and exported when serialized
-        self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)))
-        self.position_embedding_type = getattr(config, "position_embedding_type", "absolute") # absolute
+#         # position_ids (1, len position emb) is contiguous in memory and exported when serialized
+#         self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)))
+#         self.position_embedding_type = getattr(config, "position_embedding_type", "absolute") # absolute
         
-        self.config = config
+#         self.config = config
 
-    def forward(
-        self, input_ids=None, position_ids=None, inputs_embeds=None):
-        if input_ids is not None:
-            input_shape = input_ids.size()
-        else:
-            input_shape = inputs_embeds.size()[:-1]
+#     def forward(
+#         self, input_ids=None, position_ids=None, inputs_embeds=None):
+#         if input_ids is not None:
+#             input_shape = input_ids.size()
+#         else:
+#             input_shape = inputs_embeds.size()[:-1]
 
-        seq_length = input_shape[1]
+#         seq_length = input_shape[1]
 
-        if position_ids is None:
-            position_ids = self.position_ids[:, 0 : seq_length]
+#         if position_ids is None:
+#             position_ids = self.position_ids[:, 0 : seq_length]
 
-        if inputs_embeds is None:
-            inputs_embeds = self.word_embeddings(input_ids)
+#         if inputs_embeds is None:
+#             inputs_embeds = self.word_embeddings(input_ids)
 
-        embeddings = inputs_embeds
+#         embeddings = inputs_embeds
 
-        if self.position_embedding_type == "absolute":
-            position_embeddings = self.position_embeddings(position_ids)
-            # print('add position_embeddings!!!!')
-            embeddings += position_embeddings
-        embeddings = self.LayerNorm(embeddings)
-        embeddings = self.dropout(embeddings)
-        return embeddings
+#         if self.position_embedding_type == "absolute":
+#             position_embeddings = self.position_embeddings(position_ids)
+#             # print('add position_embeddings!!!!')
+#             embeddings += position_embeddings
+#         embeddings = self.LayerNorm(embeddings)
+#         embeddings = self.dropout(embeddings)
+#         return embeddings
 
 
 class BertSelfAttention(nn.Module):
@@ -235,11 +234,8 @@ class BertOutput(nn.Module):
 class BertLayer(nn.Module):
     def __init__(self, config, layer_num):
         super().__init__()
-        self.config = config
-        self.chunk_size_feed_forward = config.chunk_size_feed_forward
-        self.seq_len_dim = 1
+        # self.config = config
         self.attention = BertAttention(config)      
-        self.layer_num = layer_num
         self.crossattention = BertAttention(config, is_cross_attention=True)
         self.intermediate = BertIntermediate(config)
         self.output = BertOutput(config)
@@ -247,10 +243,10 @@ class BertLayer(nn.Module):
     def forward(
         self,
         hidden_states,
-        attention_mask=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
-    ):
+        attention_mask,
+        encoder_hidden_states,
+        encoder_attention_mask,
+    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         assert encoder_hidden_states is not None, "encoder_hidden_states must be given for cross-attention layers"
 
         cross_attention_outputs = self.crossattention(
@@ -261,14 +257,12 @@ class BertLayer(nn.Module):
         )
         attention_output = cross_attention_outputs[0]
         outputs = cross_attention_outputs[1:-1]  # add cross attentions if we output attention weights  
-
         present_key_value = cross_attention_outputs[-1]
 
-        layer_output = apply_chunking_to_forward(
-            self.feed_forward_chunk, self.chunk_size_feed_forward, self.seq_len_dim, attention_output
-        )
-        outputs = (layer_output,) + outputs
-        outputs = outputs + (present_key_value,)
+        # attention_output.size() -- [1, 4585, 768]
+        layer_output = self.feed_forward_chunk(attention_output)
+
+        outputs = (layer_output,) + outputs + (present_key_value,)
 
         return outputs
 
@@ -283,7 +277,7 @@ class BertEncoder(nn.Module):
         super().__init__()
         self.config = config
         self.layer = nn.ModuleList([BertLayer(config,i) for i in range(config.num_hidden_layers)])
-        self.gradient_checkpointing = False
+        # self.gradient_checkpointing = False
 
     def forward(
         self,
@@ -292,11 +286,7 @@ class BertEncoder(nn.Module):
         encoder_hidden_states=None,
         encoder_attention_mask=None,
     ):
-        next_decoder_cache = ()
-               
-        for i in range(self.config.num_hidden_layers):
-            layer_module = self.layer[i]
-
+        for i, layer_module in enumerate(self.layer):
             layer_outputs = layer_module(
                 hidden_states,
                 attention_mask,
@@ -306,29 +296,31 @@ class BertEncoder(nn.Module):
 
             hidden_states = layer_outputs[0]
 
-        return tuple([hidden_states, next_decoder_cache])
+        return hidden_states
 
 
-class BertPreTrainedModel(PreTrainedModel):
-    """
-    An abstract class to handle weights initialization and a simple interface for downloading and loading pretrained
-    models.
-    """
+# class BertPreTrainedModel(nn.Module): # PreTrainedModel
+#     """
+#     An abstract class to handle weights initialization and a simple interface for downloading and loading pretrained
+#     models.
+#     """
+#     # def __init__(self, config):
+#     #     super(BertPreTrainedModel).__init__()
 
-    def _init_weights(self, module):
-        """ Initialize the weights """
-        if isinstance(module, (nn.Linear, nn.Embedding)):
-            # Slightly different from the TF version which uses truncated_normal for initialization
-            # cf https://github.com/pytorch/pytorch/pull/5617
-            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
-        elif isinstance(module, nn.LayerNorm):
-            module.bias.data.zero_()
-            module.weight.data.fill_(1.0)
-        if isinstance(module, nn.Linear) and module.bias is not None:
-            module.bias.data.zero_()
+#     def _init_weights(self, module):
+#         """ Initialize the weights """
+#         if isinstance(module, (nn.Linear, nn.Embedding)):
+#             # Slightly different from the TF version which uses truncated_normal for initialization
+#             # cf https://github.com/pytorch/pytorch/pull/5617
+#             module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
+#         elif isinstance(module, nn.LayerNorm):
+#             module.bias.data.zero_()
+#             module.weight.data.fill_(1.0)
+#         if isinstance(module, nn.Linear) and module.bias is not None:
+#             module.bias.data.zero_()
 
 
-class BertModel(BertPreTrainedModel):
+class BertModel(nn.Module): # nn.Module, BertPreTrainedModel
     """
     The model can behave as an encoder (with only self-attention) as well as a decoder, in which case a layer of
     cross-attention is added between the self-attention layers, following the architecture described in `Attention is
@@ -339,13 +331,14 @@ class BertModel(BertPreTrainedModel):
     """
 
     def __init__(self, config):
-        super().__init__(config)
-        self.config = config
+        # super().__init__(config)
+        super().__init__()
 
-        self.embeddings = BertEmbeddings(config)
+        self.config = config
+        # self.embeddings = BertEmbeddings(config)
         
         self.encoder = BertEncoder(config)
-        self.init_weights()
+        # self.init_weights()
  
 
     def get_input_embeddings(self):
@@ -354,20 +347,13 @@ class BertModel(BertPreTrainedModel):
     def set_input_embeddings(self, value):
         self.embeddings.word_embeddings = value
 
-    
-    def get_extended_attention_mask(self, attention_mask: Tensor, input_shape: Tuple[int], device: device) -> Tensor:
+
+    def get_extended_attention_mask(self, attention_mask: Tensor) -> Tensor:
         """
         Makes broadcastable attention and causal masks so that future and masked tokens are ignored.
         """
-
         extended_attention_mask = attention_mask[:, None, None, :]
-
-        # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
-        # masked positions, this operation will create a tensor which is 0.0 for
-        # positions we want to attend and -10000.0 for masked positions.
-        # Since we are adding it to the raw scores before the softmax, this is
-        # effectively the same as removing these entirely.
-        extended_attention_mask = extended_attention_mask.to(dtype=self.dtype)  # fp16 compatibility
+        # extended_attention_mask = extended_attention_mask.to(dtype=self.dtype)  # fp16 compatibility
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
         return extended_attention_mask
     
@@ -401,7 +387,7 @@ class BertModel(BertPreTrainedModel):
             
         # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
         # ourselves in which case we just need to make it broadcastable to all heads.
-        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape, device)
+        extended_attention_mask = self.get_extended_attention_mask(attention_mask)
         encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
             
         encoder_outputs = self.encoder(
@@ -413,3 +399,11 @@ class BertModel(BertPreTrainedModel):
         
         return encoder_outputs
 
+    def invert_attention_mask(self, encoder_attention_mask: Tensor) -> Tensor:
+        # encoder_attention_mask.size() -- [1, 145]
+        encoder_extended_attention_mask = encoder_attention_mask[:, None, None, :]
+        # encoder_extended_attention_mask = encoder_extended_attention_mask.to(dtype=self.dtype)  # fp16 compatibility
+        # encoder_extended_attention_mask = (1.0 - encoder_extended_attention_mask) * torch.finfo(self.dtype).min
+        encoder_extended_attention_mask = (1.0 - encoder_extended_attention_mask) * torch.finfo(torch.float32).min
+
+        return encoder_extended_attention_mask

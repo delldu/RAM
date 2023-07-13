@@ -56,7 +56,7 @@ def get_ram_model():
     print(f"Running model on {device} ...")
     # print(model)
     
-    model = torch.jit.script(model)
+    # model = torch.jit.script(model)
     # todos.data.mkdir("output")
     # if not os.path.exists("output/image_ram.torch"):
     #     model.save("output/image_ram.torch")
