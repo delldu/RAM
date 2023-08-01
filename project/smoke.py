@@ -33,7 +33,7 @@ if __name__ == "__main__":
 
         start_time = time.time()
         with torch.no_grad():
-            y, _ = model(x.to(device))
+            y = model(x.to(device))
         torch.cuda.synchronize()
         mean_time += time.time() - start_time
 
