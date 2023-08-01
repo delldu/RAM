@@ -13,12 +13,12 @@ import pdb
 import os
 import time
 import torch
-import image_ram
+import RAM
 
 from tqdm import tqdm
 
 if __name__ == "__main__":
-    model, device = image_ram.get_ram_model()
+    model, device = RAM.get_model()
 
     N = 100
     B, C, H, W = 1, 3, 384, 384

@@ -9,6 +9,6 @@
 # ************************************************************************************/
 #
 
-import image_ram
+import RAM
 
-image_ram.image_ram_predict("images/*.jpg", "output")
+RAM.predict("images/*.jpg", "output")

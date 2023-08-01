@@ -42,7 +42,7 @@ class RAM(nn.Module):
 
         # create image encoder
         if vit == 'swin_b':
-
+            pass
 
         elif vit == 'swin_l':
             if image_size == 224:

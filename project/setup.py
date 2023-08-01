@@ -15,7 +15,7 @@ with open("README.md", "r") as file:
     long_description = file.read()
 
 setup(
-    name="image_ram",
+    name="RAM",
     version="1.0.0",
     author="Dell Du",
     author_email="18588220928@163.com",
@@ -23,8 +23,8 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/delldu/RAM.git",
-    packages=["image_ram"],
-    package_data={"image_ram": ["models/image_ram.pth", 
+    packages=["RAM"],
+    package_data={"RAM": ["models/RAM.pth", 
         "config/config_swinL_384.json", "config/q2l_config.json",
         "data/ram_tag_list.txt", "data/ram_tag_list_chinese.txt", "data/ram_tag_list_threshold.txt", "data/tag_list.txt"]
     },
@@ -39,8 +39,6 @@ setup(
         "torchvision >= 0.10.0",
         "Pillow >= 7.2.0",
         "numpy >= 1.19.5",
-        "einops >= 0.3.0",
-        "redos >= 1.0.0",
         "todos >= 1.0.0",
     ],
 )

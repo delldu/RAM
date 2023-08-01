@@ -14,6 +14,7 @@ from pathlib import Path
 
 from .bert import BertModel
 from .swin_transformer import SwinTransformer
+import torchvision.transforms as T
 
 CONFIG_PATH=(Path(__file__).resolve().parents[0])
 
@@ -77,6 +78,8 @@ class RAM(nn.Module):
             class_threshold[key] = value
         self.class_threshold = class_threshold
 
+        self.normal = T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+
         self.load_weights()
 
 
@@ -92,6 +95,12 @@ class RAM(nn.Module):
             del layer.attention
 
     def forward(self, image):
+        # change resize to 384x384
+        image = F.interpolate(image, size=(384, 384), mode="bilinear", align_corners=False)
+
+        # image normal
+        image = self.normal(image)
+
         label_embed = F.relu(self.wordvec_proj(self.label_embed))
         image_embeds = self.image_proj(self.visual_encoder(image))
         B, C, HW = image_embeds.size()
@@ -117,7 +126,7 @@ class RAM(nn.Module):
         return index
 
 
-    def load_weights(self, model_path="models/image_ram.pth"):
+    def load_weights(self, model_path="models/RAM.pth"):
         cdir = os.path.dirname(__file__)
         checkpoint = model_path if cdir == "" else cdir + "/" + model_path
 

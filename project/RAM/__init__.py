@@ -19,69 +19,68 @@ import numpy as np
 import torch
 import todos
 from . import ram
-from torchvision.transforms import Normalize, Compose, Resize, ToTensor
+from torchvision.transforms import Compose, ToTensor
 from pathlib import Path
 import pdb
 
 CONFIG_PATH=(Path(__file__).resolve().parents[0])
 
-def get_transform(image_size=384):
-    return Compose([
-        lambda image: image.convert("RGB"),
-        Resize((image_size, image_size)),
-        ToTensor(),
-        Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
 
-def load_tag_list(tag_list_file):
-    with open(tag_list_file, 'r', encoding="utf-8") as f:
+def tag_list(tag_file_name=f"{CONFIG_PATH}/data/ram_tag_list.txt"):
+    print(f"Loading tag from {tag_file_name} ...")
+
+    with open(tag_file_name, 'r', encoding="utf-8") as f:
         tag_list = f.read().splitlines()
     tag_list = np.array(tag_list)
     return tag_list
 
-def get_tvm_model():
+def create_model():
     """
-    TVM model base on torch.jit.trace
+    Create model
     """
 
     model = ram.RAM()
     device = todos.model.get_device()
     model = model.to(device)
     model.eval()
-    print(f"Running tvm model model on {device} ...")
+    print(f"Running model model on {device} ...")
 
     return model, device
 
 
-def get_ram_model():
-    """Create model."""
+def get_model():
+    """Load jit script model."""
 
-    model = ram.RAM()
-    device = todos.model.get_device()
-    model = model.to(device)
-    model.eval()
+    # model = ram.RAM()
+    # device = todos.model.get_device()
+    # model = model.to(device)
+    # model.eval()
+    model, device = create_model()
 
     print(f"Running model on {device} ...")
     # print(model)
 
     model = torch.jit.script(model)
     todos.data.mkdir("output")
-    if not os.path.exists("output/image_ram.torch"):
-        model.save("output/image_ram.torch")
+    if not os.path.exists("output/RAM.torch"):
+        model.save("output/RAM.torch")
 
     return model, device
 
 
-def image_ram_predict(input_files, output_dir):
+def predict(input_files, output_dir):
     # Create directory to store result
     todos.data.mkdir(output_dir)
 
     # load model
-    model, device = get_ram_model()
-    transform = get_transform()
+    model, device = get_model()
+    transform = Compose([
+        lambda image: image.convert("RGB"),
+        ToTensor(),
+    ])
 
-    english_tag_list = load_tag_list(f"{CONFIG_PATH}/data/ram_tag_list.txt")
-    chinese_tag_list = load_tag_list(f"{CONFIG_PATH}/data/ram_tag_list_chinese.txt")
+    english_tag_list = tag_list(f"{CONFIG_PATH}/data/ram_tag_list.txt")
+    chinese_tag_list = tag_list(f"{CONFIG_PATH}/data/ram_tag_list_chinese.txt")
 
     # load files
     image_filenames = todos.data.load_files(input_files)
