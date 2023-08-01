@@ -95,7 +95,7 @@ class RAM(nn.Module):
             del layer.attention
 
     def forward(self, image):
-        # change resize to 384x384
+        # resize image to 384x384
         image = F.interpolate(image, size=(384, 384), mode="bilinear", align_corners=False)
 
         # image normal

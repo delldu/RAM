@@ -51,10 +51,6 @@ def create_model():
 def get_model():
     """Load jit script model."""
 
-    # model = ram.RAM()
-    # device = todos.model.get_device()
-    # model = model.to(device)
-    # model.eval()
     model, device = create_model()
 
     print(f"Running model on {device} ...")
